@@ -215,9 +215,55 @@ def residual_unit(data, num_filter, stride, dim_match,bottle_neck,name):
                                           workspace=workspace, name=name + '_sc')
         sum = mx.sym.ElementWiseSum(*[conv3, shortcut], name=name + '_plus')
     return sum
-def residual_att_unit(data,express,ratio,num_filter,stride,dim_match,bottle_neck,name):
-    excitation = mx.sym.FullyConnected(data=express,num_hidden=ratio*expression,name=name+'_excitation')
-    pass
+def residual_att_unit(data,express,ratio,num_filter,stride,dim_match,bottle_neck,name,deform=False):
+    excitation = mx.sym.FullyConnected(data=express,num_hidden=int(ratio*num_filter),name=name+'_excitation1')
+    excitation = mx.sym.Activation(data=excitation,act_type='relu',name=name+'_relu')
+    excitation = mx.sym.FullyConnected(data=excitation,num_hidden=num_filter,name=name+'_excitation2')
+    att = mx.sym.Activation(data=excitation,act_type='sigmoid',name=name+'_attention')
+    att = mx.sym.reshape(data=att,shape=(-1,num_filter,1,1))
+    if bottle_neck:
+        #print('bottle neck')
+        bn1 = mx.sym.BatchNorm(data=data, fix_gamma=False, eps=eps,name=name + '_bn1')
+        act1 = mx.sym.Activation(data=bn1, act_type='relu', name=name + '_relu1')
+        conv1 = mx.sym.Convolution(data=act1, num_filter=int(num_filter * 0.25), kernel=(1, 1), stride=(1, 1), pad=(0, 0),
+                                   no_bias=True, workspace=workspace, name=name + '_conv1')
+        bn2 = mx.sym.BatchNorm(data=conv1, fix_gamma=False, eps=eps, name=name + '_bn2')
+        act2 = mx.sym.Activation(data=bn2, act_type='relu', name=name + '_relu2')
+        conv2 = mx.sym.Convolution(data=act2, num_filter=num_filter, kernel=(3, 3), stride=stride, pad=(1, 1),
+                                   no_bias=True, workspace=workspace, name=name + '_conv2')
+        conv2 = mx.sym.broadcast_mul(conv2,att,name=name+'_merge')
+        if dim_match:
+            shortcut = data
+        else:
+            shortcut = mx.sym.Convolution(data=act1, num_filter=num_filter, kernel=(1, 1), stride=stride, no_bias=True,
+                                          workspace=workspace, name=name + '_sc')
+        sum_ = mx.sym.ElementWiseSum(*[conv2, shortcut], name=name + '_plus')
+    else:
+        
+        bn1 = mx.sym.BatchNorm(data=data, fix_gamma=False, eps=eps,name=name + '_bn1')
+        act1 = mx.sym.Activation(data=bn1, act_type='relu', name=name + '_relu1')
+        conv1 = mx.sym.Convolution(data=act1, num_filter=num_filter, kernel=(1, 1), stride=(1, 1), pad=(0, 0),
+                                   no_bias=True, workspace=workspace, name=name + '_conv1')
+        bn2 = mx.sym.BatchNorm(data=conv1, fix_gamma=False, eps=eps, name=name + '_bn2')
+        act2 = mx.sym.Activation(data=bn2, act_type='relu', name=name + '_relu2')
+        conv2 = mx.sym.Convolution(data=act2, num_filter=num_filter, kernel=(3, 3), stride=stride, pad=(1, 1),
+                                   no_bias=True, workspace=workspace, name=name + '_conv2')
+        bn3 = mx.sym.BatchNorm(data=conv2, fix_gamma=False, eps=eps,name=name + '_bn3')
+        act3 = mx.sym.Activation(data=bn3, act_type='relu', name=name + '_relu3')
+        conv3 = mx.sym.Convolution(data=act3, num_filter=num_filter, kernel=(1, 1), stride=(1, 1), pad=(0, 0), no_bias=True,
+                                   workspace=workspace, name=name + '_conv3')
+        conv3 = mx.sym.elemwise_mul(conv3,att,name=name+'_merge')
+        if dim_match:
+            shortcut = data
+        else:
+            shortcut = mx.sym.Convolution(data=act1, num_filter=num_filter, kernel=(1, 1), stride=stride, no_bias=True,
+                                          workspace=workspace, name=name + '_sc')
+        sum_ = mx.sym.ElementWiseSum(*[conv3, shortcut], name=name + '_plus')
+    if deform:
+        offset = mx.sym.Convolution(data=sum_,num_filter=72, pad=(2, 2), kernel=(3, 3), stride=(1, 1), dilate=(2, 2), cudnn_off=True,name=name+'_offset')
+        sum_ = mx.contrib.symbol.DeformableConvolution(data=sum_, offset=offset,num_filter=512, pad=(2, 2), kernel=(3, 3), num_deformable_group=4,
+                                                       stride=(1, 1), dilate=(2, 2), no_bias=True,name=name+'_deform')
+    return sum_
 
 def symbol_resnet(data,units,filter_list,bottle_neck):
     
@@ -435,9 +481,10 @@ def get_symbol_train(seq_len,network='resnet_18',num_classes=1, nms_thresh=0.5, 
     elif network=='inceptionv3':
         c5,c4,c3,_=symbol_Inception_v3(data)
     rnn_feat = get_rnn_feat(seq_len,expression)
-    rnn_feat = mx.sym.FullyConnected(data=rnn_feat,num_hidden=256,name='rnn_feat_fc1')
-    rnn_feat_reshape = mx.sym.reshape(data=rnn_feat,shape=(-1,256,1,1))
-    P6 = mx.symbol.Convolution(data=c5,num_filter=256,kernel=(3,3),stride=(2,2),pad=(1,1),name='P6_')
+    c5 = residual_att_unit(data=c5,express=rnn_feat,ratio=0.75,num_hidden=512,stride=(1,1),dim_match=False,name='c5',deform=False)
+    c4 = residual_att_unit(data=c4,express=rnn_feat,ratio=0.5,num_hidden=256,stride=(1,1),dim_match=False,name='c4',deform=False)
+    c3 = residual_att_unit(data=c3,express=rnn_feat,ratio=0.25,num_hidden=128,stride=(1,1),dim_match=False,name='c3',deform=False)
+    P6 = mx.symbol.Convolution(data=c5,num_filter=256,kernel=(3,3),stride=(2,2),pad=(1,1),name='P6')
     p6_relu = mx.symbol.Activation(data=P6,act_type='relu',name='p6_relu')
     P7 = mx.symbol.Convolution(data=p6_relu,num_filter=256,kernel=(3,3),stride=(2,2),pad=(1,1),name='P7')
     P5 = mx.symbol.Convolution(data=c5,num_filter=256,kernel=(1,1),stride=(1,1),pad=(0,0),name='P5')
@@ -449,12 +496,6 @@ def get_symbol_train(seq_len,network='resnet_18',num_classes=1, nms_thresh=0.5, 
     P4_topdown = mx.symbol.Deconvolution(data=P4,num_filter=256,kernel=(4,4),stride=(2,2),pad=(1,1),name='P4_topdown')
     P3_lateral = mx.symbol.Convolution(data=c3,num_filter=256,kernel=(1,1),stride=(1,1),pad=(0,0),name='P3_lateral')
     P3 = mx.sym.elemwise_add(P3_lateral, P4_topdown,name='P3')
-    P3 = mx.sym.broadcast_mul(P3,rnn_feat_reshape,name='P3_mul')
-    """
-    P3_topdown = mx.symbol.Deconvolution(data=P3,num_filter=256,kernel=(4,4),stride=(2,2),pad=(1,1),name='P3_topdown')
-    P2_lateral = mx.symbol.Convolution(data=p2,num_filter=256,kernel=(1,1),stride=(1,1),pad=(0,0),name='P2_lateral')
-    P2 = mx.sym.elemwise_add(P3_topdown,P2_lateral,name='P2')
-    """
     #specific parameters
     from_layers = [P7,P6,P5,P4,P3]
     sizes = [[0.01, .1], [.2,.3], [.4, .5], [.6, .7],[.9,1.]]
