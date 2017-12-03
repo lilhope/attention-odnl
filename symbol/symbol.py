@@ -19,6 +19,7 @@
 import mxnet as mx
 from common import legacy_conv_act_layer
 from common import multibox_layer
+from config.config import cfg
 
 #global variable
 eps = 2e-5
@@ -421,7 +422,7 @@ def symbol_Inception_v3(data):
     #print(in4e.infer_shape(data=(1,3,640,640))[1])
     return in4e,in3d,pool1,pool
 
-def get_symbol_train(seq_len,network='resnet_18',num_classes=1, nms_thresh=0.5, force_suppress=False, nms_topk=400):
+def get_symbol_train(seq_len):
     """
     Single-shot multi-box detection with VGG 16 layers ConvNet
     This is a modified version, with fc6/fc7 layers replaced by conv layers
@@ -444,6 +445,8 @@ def get_symbol_train(seq_len,network='resnet_18',num_classes=1, nms_thresh=0.5, 
     mx.Symbol
     """
     #print('xx')
+    network = cfg.NETWORK
+    num_classes = cfg.NUM_CLASSES
     data = mx.symbol.Variable(name="data")
     expression = mx.symbol.Variable(name='expression')
     label = mx.symbol.Variable(name="label")
@@ -528,8 +531,8 @@ def get_symbol_train(seq_len,network='resnet_18',num_classes=1, nms_thresh=0.5, 
     # monitoring training status
     cls_label = mx.symbol.MakeLoss(data=cls_target, grad_scale=0, name="cls_label")
     det = mx.contrib.symbol.MultiBoxDetection(*[cls_prob, loc_preds, anchor_boxes], \
-        name="detection", nms_threshold=nms_thresh, force_suppress=force_suppress,
-        variances=(0.1, 0.1, 0.2, 0.2), nms_topk=nms_topk)
+        name="detection", nms_threshold=cfg.NMS_THRESHOLD, force_suppress=cfg.FORCE_SUPPRESS,
+        variances=(0.1, 0.1, 0.2, 0.2), nms_topk=cfg.NMS_TOPK)
     det = mx.symbol.MakeLoss(data=det, grad_scale=0, name="det_out")
 
     # group output
