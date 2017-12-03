@@ -30,7 +30,7 @@ for i in range(2):
 
 def get_rnn_feat(seq_len,expression):
     """sequence to vector"""
-    embed= mx.symbol.Embedding(data=expression,input_dim=72000,output_dim=300,name='embed')
+    embed= mx.symbol.Embedding(data=expression,input_dim=72704,output_dim=300,name='embed')
     outputs,states = stack.unroll(seq_len,inputs=embed,merge_outputs=False)
     output = outputs[-1]
     e_fc1 = mx.symbol.FullyConnected(data=output,num_hidden=256,name='e_fc1')
@@ -252,7 +252,7 @@ def residual_att_unit(data,express,ratio,num_filter,stride,dim_match,bottle_neck
         act3 = mx.sym.Activation(data=bn3, act_type='relu', name=name + '_relu3')
         conv3 = mx.sym.Convolution(data=act3, num_filter=num_filter, kernel=(1, 1), stride=(1, 1), pad=(0, 0), no_bias=True,
                                    workspace=workspace, name=name + '_conv3')
-        conv3 = mx.sym.elemwise_mul(conv3,att,name=name+'_merge')
+        conv3 = mx.sym.broadcast_mul(conv3,att,name=name+'_merge')
         if dim_match:
             shortcut = data
         else:
@@ -481,9 +481,9 @@ def get_symbol_train(seq_len,network='resnet_18',num_classes=1, nms_thresh=0.5, 
     elif network=='inceptionv3':
         c5,c4,c3,_=symbol_Inception_v3(data)
     rnn_feat = get_rnn_feat(seq_len,expression)
-    c5 = residual_att_unit(data=c5,express=rnn_feat,ratio=0.75,num_hidden=512,stride=(1,1),dim_match=False,name='c5',deform=False)
-    c4 = residual_att_unit(data=c4,express=rnn_feat,ratio=0.5,num_hidden=256,stride=(1,1),dim_match=False,name='c4',deform=False)
-    c3 = residual_att_unit(data=c3,express=rnn_feat,ratio=0.25,num_hidden=128,stride=(1,1),dim_match=False,name='c3',deform=False)
+    c5 = residual_att_unit(data=c5,express=rnn_feat,ratio=0.75,num_filter=512,stride=(1,1),bottle_neck=False,dim_match=False,name='c5',deform=False)
+    c4 = residual_att_unit(data=c4,express=rnn_feat,ratio=0.5,num_filter=256,stride=(1,1),bottle_neck=False,dim_match=False,name='c4',deform=False)
+    c3 = residual_att_unit(data=c3,express=rnn_feat,ratio=0.25,num_filter=128,stride=(1,1),bottle_neck=False,dim_match=False,name='c3',deform=False)
     P6 = mx.symbol.Convolution(data=c5,num_filter=256,kernel=(3,3),stride=(2,2),pad=(1,1),name='P6')
     p6_relu = mx.symbol.Activation(data=P6,act_type='relu',name='p6_relu')
     P7 = mx.symbol.Convolution(data=p6_relu,num_filter=256,kernel=(3,3),stride=(2,2),pad=(1,1),name='P7')
@@ -571,6 +571,7 @@ def get_symbol(network,num_classes=20, nms_thresh=0.5, force_suppress=False, nms
     return out
     
 if __name__=='__main__':
-    get_symbol_train('vgg16_bn')
+    symbol,data_name,label_name = get_symbol_train(10)
+    print(symbol.list_arguments())
     
     

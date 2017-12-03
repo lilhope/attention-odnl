@@ -28,11 +28,13 @@ def parse_args():
                         default=os.path.join(os.getcwd(), 'data', 'train_cache.pkl'), type=str)
     parser.add_argument('--val-path', dest='val_path', help='validation record to use',
                         default=os.path.join(os.getcwd(), 'data', 'val_cache.pkl'), type=str)
+    parser.add_argument('--word2vec-path',dest='word2vec_path',help='path to the word2vec file',
+                        default='/home/liuhaopeng/data_nova/wordembedding/embed_matrix.npy')
     parser.add_argument('--image-root',dest='image_root',help='root dir of images',
 			default='/home/liuhaopeng/data_nova/visualgenome/',type=str)
-    parser.add_argument('--network', dest='network', type=str, default='legacy_vgg16_ssd_640',
+    parser.add_argument('--network', dest='network', type=str, default='resnet_18',
                         help='which network to use')
-    parser.add_argument('--batch-size', dest='batch_size', type=int, default=4,
+    parser.add_argument('--batch-size', dest='batch_size', type=int, default=54,
                         help='training batch size')
     parser.add_argument('--resume', dest='resume', type=int, default=-1,
                         help='resume training from epoch n')
@@ -45,18 +47,18 @@ def parse_args():
     parser.add_argument('--prefix', dest='prefix', help='new model prefix',
                         default=os.path.join(os.getcwd(), 'model', 'ssd'), type=str)
     parser.add_argument('--gpus', dest='gpus', help='GPU devices to train with',
-                        default='', type=str)
+                        default='1,2,3', type=str)
     parser.add_argument('--begin-epoch', dest='begin_epoch', help='begin epoch of training',
                         default=0, type=int)
     parser.add_argument('--end-epoch', dest='end_epoch', help='end epoch of training',
-                        default=240, type=int)
+                        default=10, type=int)
     parser.add_argument('--frequent', dest='frequent', help='frequency of logging',
-                        default=20, type=int)
-    parser.add_argument('--data-shape', dest='data_shape', type=int, default=640,
+                        default=2000, type=int)
+    parser.add_argument('--data-shape', dest='data_shape', type=str, default='640,768',
                         help='set image shape')
     parser.add_argument('--label-width', dest='label_width', type=int, default=20,
                         help='force padding label width to sync across train and validation')
-    parser.add_argument('--lr', dest='learning_rate', type=float, default=0.0001,
+    parser.add_argument('--lr', dest='learning_rate', type=float, default=0.01,
                         help='learning rate')
     parser.add_argument('--momentum', dest='momentum', type=float, default=0.9,
                         help='momentum')
@@ -68,7 +70,7 @@ def parse_args():
                         help='green mean value')
     parser.add_argument('--mean-b', dest='mean_b', type=float, default=107,
                         help='blue mean value')
-    parser.add_argument('--lr-steps', dest='lr_refactor_step', type=str, default='80, 160',
+    parser.add_argument('--lr-steps', dest='lr_refactor_step', type=str, default='4,8',
                         help='refactor learning rate at specified epochs')
     parser.add_argument('--lr-factor', dest='lr_refactor_ratio', type=str, default=0.1,
                         help='ratio to refactor learning rate')
@@ -82,7 +84,7 @@ def parse_args():
                         help='monitor parameter pattern, as regex')
     parser.add_argument('--num-class', dest='num_class', type=int, default=1,
                         help='number of classes')
-    parser.add_argument('--num-example', dest='num_example', type=int, default=7398,
+    parser.add_argument('--num-example', dest='num_example', type=int, default=2866370,
                         help='number of image examples')
     parser.add_argument('--class-names', dest='class_names', type=str,
                         default='nodule',
@@ -122,13 +124,14 @@ if __name__ == '__main__':
     # context list
     ctx = [mx.gpu(int(i)) for i in args.gpus.split(',') if i.strip()]
     ctx = [mx.cpu()] if not ctx else ctx
+    data_shape = [int(x)  for x in args.data_shape.split(',') if x.strip()]
     # class names if applicable
     class_names = parse_class_names(args)
     # start training
     print(args.train_path)
-    train_net(args.network, args.train_path,args.image_root,
+    train_net(args.network, args.train_path,args.word2vec_path,args.image_root,
               args.num_class, args.batch_size,
-              args.data_shape, [args.mean_r, args.mean_g, args.mean_b],
+              data_shape, [args.mean_r, args.mean_g, args.mean_b],
               args.resume, args.finetune, args.pretrained,
               args.epoch, args.prefix, ctx, args.begin_epoch, args.end_epoch,
               args.frequent, args.learning_rate, args.momentum, args.weight_decay,
