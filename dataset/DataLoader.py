@@ -34,7 +34,6 @@ class ImageRefDetIter(mx.io.DataIter):
             rec['expression'] = buff
             self.data[buck].append(rec)
 	print('discard %d samples'%(ndiscard))
-	print(len(self.data[0]))
         self.batch_size = batch_size
         self.buckets = buckets
         self.invalid_label = invalid_label
@@ -46,17 +45,19 @@ class ImageRefDetIter(mx.io.DataIter):
         self._rand_samplers = rand_samplers
 	self._rand_mirror = rand_mirror
 	self.image_root = image_root
-        self.size = len(imdb)
-        
+
         #print(self.size)
         self.idx = []
-	self.default_bucket_key = 10 # max(buckets)
+	self.default_bucket_key = max(buckets)
         for i, buck in enumerate(self.data):
             self.idx.extend([i,j] for j in range(0,len(buck) - batch_size + 1,batch_size))
+	#print(self.idx)
+	self.size = len(self.idx)
+	print(self.size)
         #self.curr_idx = 0
 	self.provide_data=[mx.io.DataDesc(name='expression',shape=(self.batch_size,self.default_bucket_key),layout='NT'),\
 			   mx.io.DataDesc(name='data',shape=(self.batch_size,3,self._data_shape[0],self._data_shape[1]))]
-	self.provide_label=[mx.io.DataDesc(name='label',shape=(self.batch_size,1,6))]
+	self.provide_label=[mx.io.DataDesc(name='label',shape=(self.batch_size,3,6))]
         #print(self.provide_data)
 	self._data=None
 	self._label=None
@@ -89,9 +90,9 @@ class ImageRefDetIter(mx.io.DataIter):
 					 bucket_key=self.bucket_key,
 					 provide_data=[mx.io.DataDesc(name=self._data.keys()[0],shape=(self.batch_size,self.bucket_key),layout='NT'),
 							mx.io.DataDesc(name=self._data.keys()[1],shape=(self.batch_size,3,self._data_shape[0],self._data_shape[1]))],
-					 provide_label = [mx.io.DataDesc(name='label',shape=(self.batch_size,1,6))],
+					 provide_label = [mx.io.DataDesc(name='label',shape=(self.batch_size,3,6))],
                                          pad=self.getpad(),index=self.getindex())
-            self.curr_idx += self.batch_size
+            self.curr_idx += 1
             return data_batch
         else:
             raise StopIteration
@@ -112,10 +113,10 @@ class ImageRefDetIter(mx.io.DataIter):
 	self.bucket_key = self.buckets[i]
         batch_data = mx.nd.zeros((self.batch_size, 3, self._data_shape[0], self._data_shape[1]))
         batch_expression_data = mx.nd.zeros((self.batch_size,self.bucket_key))
-        batch_label = []
-        samples = self.data[i][j:j+self.batch_size]
+	batch_label = mx.nd.ones((self.batch_size,3,6)) * -1.
+	num_samples = len(self.data[i])
+	samples = self.data[i][j:j+self.batch_size] if (j+self.batch_size) < num_samples else self.data[i][j:num_samples]
         for idx,sample in enumerate(samples):
-	    #print(sample)
             path_ = sample['img_path']
 	    im_path = self.image_root + str(path_)
             gt_boxes = sample['bbox'].copy() if self.is_train else None
@@ -127,10 +128,10 @@ class ImageRefDetIter(mx.io.DataIter):
             expression = mx.nd.array(sample['expression'])
             batch_data[idx] = im_data
             batch_expression_data[idx] = expression
-            batch_label.append(label)
+            batch_label[idx] = mx.nd.array(label)
         self._data = {'data':batch_data,'expression':batch_expression_data}
         if self.is_train:
-            self._label = {'label':mx.nd.array(batch_label)}
+            self._label = {'label':batch_label}
         else:
             self._label = {'label':None}
         
@@ -192,12 +193,13 @@ def test():
     with open(rec_path) as f:
 	imdb = cPickle.load(f)
     image_root = '/home/liuhaopeng/data_nova/visualgenome'
-    loader = ImageRefDetIter(imdb,image_root,batch_size=4,data_shape=(640,720),buckets=[5,10,15,20,25,30,40,50])
+    itertor = ImageRefDetIter(imdb,image_root,batch_size=54,data_shape=(640,720),buckets=[5,10,15,20])
+    loader = mx.io.PrefetchingIter(itertor)
     print(loader.provide_data)
     data_iter = iter(loader)
     x = []
-    for i in range(10):
+    for i in range(20000):
 	data_batch = next(data_iter)
-	print(data_batch.provide_data)
+	print(data_batch.label)
 if __name__=='__main__':
 	test()

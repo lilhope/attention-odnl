@@ -55,13 +55,12 @@ class visual_genome():
                 x2 = float(region['x'] + region['width'] + 1) / im_width
                 y2 = float(region['y'] + region['height'] + 1) / im_height
                 bbox = np.array([[0,x1,y1,x2,y2,0]])
+		pad = np.ones((2,6)) * (-1.)
+		bbox = np.vstack((bbox,pad))
                 region['bbox'] = bbox
                 region['img_path'] = img_path
                 Anns.append(region)                
         self.Anns = Anns
-        #write to cache file
-        with open('/home/liuhaopeng/cache.pkl','w') as f:
-            cPickle.dump(Anns,f,-1)
     def getimrefdb(self):
         """get the image-refexpression dataset"""
         pass
@@ -72,6 +71,18 @@ if __name__=='__main__':
     vocab_file = '/home/liuhaopeng/data_nova/wordembedding/vocabulary_72700.txt'
     dataset = visual_genome(data_root,vocab_file)
     Anns = dataset.Anns
+    #split the train val ,test(6:2:2)
+    num_samples = len(Anns)
+    train = Anns[:int(0.6 * num_samples)]
+    val = Anns[int(0.6 * num_samples): int(0.8 * num_samples)]
+    test = Anns[int(0.8 * num_samples):]
+    print(len(train),len(val),len(test))
+    with open('/home/liuhaopeng/train_cache.pkl','wb') as f:
+	cPickle.dump(train,f)
+    with open('/home/liuhaopeng/test_cache.pkl','wb') as f:
+	cPickle.dump(test,f)
+    with open('/home/liuhaopeng/val_cache.pkl','wb') as f:
+	cPickle.dump(val,f)
     del dataset
     
             
